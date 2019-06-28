@@ -1118,7 +1118,7 @@ void Util_printService(Service_T s) {
                 }
 #endif
                 StringBuffer_clear(buf);
-                printf(" %-20s = %s\n", "Port", StringBuffer_toString(Util_printRule(buf, o->action, StringBuffer_toString(buf2))));
+                printf(" %-20s = %s\n", "Port", StringBuffer_toString(Util_printRule(buf, o->action, "%s", StringBuffer_toString(buf2))));
                 StringBuffer_free(&buf2);
         }
 
@@ -1127,7 +1127,7 @@ void Util_printService(Service_T s) {
                 if (o->retry > 1)
                         printf(" %-20s = %s\n", "Unix Socket", StringBuffer_toString(Util_printRule(buf, o->action, "if failed %s type %s protocol %s with timeout %s and retry %d times", o->target.unix.pathname, Util_portTypeDescription(o), o->protocol->name, Fmt_ms(o->timeout, (char[11]){}), o->retry)));
                 else
-                        printf(" %-20s = %s\n", "Unix Socket", StringBuffer_toString(Util_printRule(buf, o->action, "if failed %s type %s protocol %s with timeout %s", o->target.unix.pathname, Util_portTypeDescription(o), o->protocol->name, Fmt_ms(o->timeout, (char[11]){}), o->retry)));
+                        printf(" %-20s = %s\n", "Unix Socket", StringBuffer_toString(Util_printRule(buf, o->action, "if failed %s type %s protocol %s with timeout %s", o->target.unix.pathname, Util_portTypeDescription(o), o->protocol->name, Fmt_ms(o->timeout, (char[11]){}))));
         }
 
         for (Timestamp_T o = s->timestamplist; o; o = o->next) {
