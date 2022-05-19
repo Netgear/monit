@@ -139,6 +139,15 @@ int Process_isRunning(T P);
 
 
 /**
+ * Returns the input stream connected to the normal output of the sub-process.
+ * The stream obtains data piped from the standard output of the process
+ * represented by this Process object.
+ * @param P A Process object
+ * @return The input stream connected to the normal output of the sub-process.
+ */
+InputStream_T Process_getInputStream(T P);
+
+/**
  * Returns the output stream connected to the normal input of the sub-process. 
  * Output to the stream is piped into the standard input of the process 
  * represented by this Process object. 
@@ -147,17 +156,6 @@ int Process_isRunning(T P);
  */
 OutputStream_T Process_getOutputStream(T P);
 
-
-/**
- * Returns the input stream connected to the normal output of the sub-process. 
- * The stream obtains data piped from the standard output of the process 
- * represented by this Process object.
- * @param P A Process object
- * @return The input stream connected to the normal output of the sub-process.
- */
-InputStream_T Process_getInputStream(T P);
-
-
 /**
  * Returns the input stream connected to the error output of the sub-process. 
  * The stream obtains data piped from the error output of the process 
@@ -165,7 +163,7 @@ InputStream_T Process_getInputStream(T P);
  * @param P A Process object
  * @return The input stream connected to the error output of the sub-process.
  */
-InputStream_T Process_getErrorStream(T P);
+OutputStream_T Process_getErrorStream(T P);
 
 
 //@}

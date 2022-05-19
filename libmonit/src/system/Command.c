@@ -85,8 +85,8 @@ struct Process_T {
         int stdout_pipe[2];
         int stderr_pipe[2];
         InputStream_T in;
-        InputStream_T err;
         OutputStream_T out;
+        OutputStream_T err;
         char *working_directory;
 };
 
@@ -213,8 +213,8 @@ static void _closeParentPipes(Process_T P) {
 /* Close and destroy opened stdio streams */
 static void _closeStreams(Process_T P) {
         if (P->in) InputStream_free(&P->in);
-        if (P->err) InputStream_free(&P->err);
         if (P->out) OutputStream_free(&P->out);
+        if (P->err) OutputStream_free(&P->err);
 }
 
 
@@ -318,14 +318,6 @@ int Process_isRunning(Process_T P) {
 }
 
 
-OutputStream_T Process_getOutputStream(Process_T P) {
-        assert(P);
-        if (! P->out)
-                P->out = OutputStream_new(P->stdin_pipe[1]);
-        return P->out;
-}
-
-
 InputStream_T Process_getInputStream(Process_T P) {
         assert(P);
         if (! P->in)
@@ -333,11 +325,17 @@ InputStream_T Process_getInputStream(Process_T P) {
         return P->in;
 }
 
+OutputStream_T Process_getOutputStream(Process_T P) {
+        assert(P);
+        if (! P->out)
+                P->out = OutputStream_new(P->stdin_pipe[1]);
+        return P->out;
+}
 
-InputStream_T Process_getErrorStream(Process_T P) {
+OutputStream_T Process_getErrorStream(Process_T P) {
         assert(P);
         if (! P->err)
-                P->err = InputStream_new(P->stderr_pipe[0]);
+                P->err = OutputStream_new(P->stderr_pipe[0]);
         return P->err;
 }
 

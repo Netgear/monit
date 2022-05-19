@@ -87,9 +87,9 @@ typedef enum {
 /* ----------------------------------------------------------------- Private */
 
 
-static int _getOutput(InputStream_T in, char *buf, int buflen) {
-        InputStream_setTimeout(in, 0);
-        return InputStream_readBytes(in, buf, buflen - 1);
+static int _getOutput(OutputStream_T in, char *buf, int buflen) {
+        OutputStream_setTimeout(in, 0);
+        return OutputStream_readBytes(in, buf, buflen - 1);
 }
 
 
@@ -148,8 +148,7 @@ static int _commandExecute(Service_T S, command_t c, char *msg, int msglen, int6
                         int n, total = 0;
                         char buf[STRLEN];
                         do {
-                                if ((n = _getOutput(Process_getErrorStream(P), buf, sizeof(buf))) <= 0)
-                                        n = _getOutput(Process_getInputStream(P), buf, sizeof(buf));
+                                n = _getOutput(Process_getErrorStream(P), buf, sizeof(buf));
                                 if (n > 0) {
                                         buf[n] = 0;
                                         DEBUG("%s", buf);
