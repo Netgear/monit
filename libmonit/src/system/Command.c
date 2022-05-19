@@ -171,20 +171,22 @@ static void _setupChildPipes(Process_T P) {
                         ERROR("Command: dup2(stdin) -- %s\n", System_getLastError());
                 close(P->stdin_pipe[0]);
         }
-        close(P->stdout_pipe[0]);  // close read end
+        Net_setNonBlocking(P->stdin_pipe[0]);
+
+        close(P->stdout_pipe[0]);   // close read end
         if (P->stdout_pipe[1] != STDOUT_FILENO) {
                 if (dup2(P->stdout_pipe[1], STDOUT_FILENO) != STDOUT_FILENO)
                         ERROR("Command: dup2(stdout) -- %s\n", System_getLastError());
                 close(P->stdout_pipe[1]);
         }
-        close(P->stderr_pipe[0]);  // close read end
+        Net_setNonBlocking(P->stdout_pipe[1]);
+
+        close(P->stderr_pipe[0]);   // close read end
         if (P->stderr_pipe[1] != STDERR_FILENO) {
                 if (dup2(P->stderr_pipe[1], STDERR_FILENO) != STDERR_FILENO)
                         ERROR("Command: dup2(stderr) -- %s\n", System_getLastError());
                 close(P->stderr_pipe[1]);
         }
-        Net_setNonBlocking(P->stdin_pipe[0]);
-        Net_setNonBlocking(P->stdout_pipe[1]);
         Net_setNonBlocking(P->stderr_pipe[1]);
 }
 
@@ -494,78 +496,82 @@ Process_T Command_execute(T C) {
         assert(_env(C));
         assert(_args(C));
         Process_T P = _Process_new();
-        if ( P != NULL )
-        {
-                _createPipes(P);
-                P->pid = fork();
-                switch ( P->pid ) {
-                case -1: // failed
-                        ERROR( "Command: fork failed -- %s\n", System_getLastError());
-                        Process_free( &P );
-                        return NULL;
+        if ( P == NULL ) {
+                ERROR( "Command: '%s' failed to create new process -- %s", _args( C )[0], System_getLastError());
+                return NULL;
+        }
+        _createPipes(P);
+        P->pid = fork();
+        switch ( P->pid ) {
+        case -1: // failed
+                ERROR( "Command: fork failed -- %s\n", System_getLastError());
+                Process_free( &P );
+                return NULL;
 
-                case 0: // Child
-                        setsid(); // Emancipate from parent
-                        _setupChildPipes( P );
-                        // Close all descriptors except stdio, _before_ any uid/gid switching
-                        Util_closeFds();
+        case 0: // Child
+                setsid(); // Emancipate from parent
+                _setupChildPipes( P );
+                // Close all descriptors except stdio, _before_ any uid/gid switching
+                // sadly Util_closeFds() is not in scope
+                for (int i = 3, descriptors = System_getDescriptorsGuarded(); i < descriptors; i++) {
+                        close(i);
+                }
 
-                        if ( C->working_directory ) {
-                                if ( !Dir_chdir( C->working_directory )) {
-                                        ERROR( "Command: sub-process cannot change working directory to '%s' -- %s\n",
-                                               C->working_directory, System_getLastError());
-                                        _exit( errno );
-                                }
+                if ( C->working_directory ) {
+                        if ( !Dir_chdir( C->working_directory )) {
+                                ERROR( "Command: sub-process cannot change working directory to '%s' -- %s\n",
+                                       C->working_directory, System_getLastError());
+                                _exit( errno );
                         }
-                        P->gid = getgid();
-                        if ( C->gid ) {
-                                if ( setgid( C->gid ) == 0 ) {
-                                        P->gid = C->gid;
-                                } else {
-                                        ERROR( "Command: Cannot change process gid to '%d' -- %s\n",
-                                               C->gid, System_getLastError());
-                                }
+                }
+                P->gid = getgid();
+                if ( C->gid ) {
+                        if ( setgid( C->gid ) == 0 ) {
+                                P->gid = C->gid;
+                        } else {
+                                ERROR( "Command: Cannot change process gid to '%d' -- %s\n",
+                                       C->gid, System_getLastError());
                         }
-                        P->uid = getuid();
-                        if ( C->uid ) {
-                                struct passwd * user = getpwuid( C->uid );
-                                if ( user ) {
-                                        Command_setEnv( C, "HOME", user->pw_dir );
-                                        if ( initgroups( user->pw_name, P->gid ) == 0 ) {
-                                                if ( setuid( C->uid ) == 0 ) {
-                                                        P->uid = C->uid;
-                                                } else {
-                                                        ERROR( "Command: Cannot change process uid to '%d' -- %s\n",
-                                                               C->uid, System_getLastError());
-                                                }
+                }
+                P->uid = getuid();
+                if ( C->uid ) {
+                        struct passwd * user = getpwuid( C->uid );
+                        if ( user ) {
+                                Command_setEnv( C, "HOME", user->pw_dir );
+                                if ( initgroups( user->pw_name, P->gid ) == 0 ) {
+                                        if ( setuid( C->uid ) == 0 ) {
+                                                P->uid = C->uid;
                                         } else {
-                                                ERROR( "Command: initgroups for user %s failed -- %s\n",
-                                                       user->pw_name, System_getLastError());
+                                                ERROR( "Command: Cannot change process uid to '%d' -- %s\n",
+                                                       C->uid, System_getLastError());
                                         }
                                 } else {
-                                        ERROR( "Command: uid %d not found on the system -- %s\n", C->uid,
-                                               System_getLastError());
+                                        ERROR( "Command: initgroups for user %s failed -- %s\n",
+                                               user->pw_name, System_getLastError());
                                 }
+                        } else {
+                                ERROR( "Command: uid %d not found on the system -- %s\n", C->uid,
+                                       System_getLastError());
                         }
-                        // Unblock any signals - execve preserves signal mask
-                        sigset_t mask;
-                        sigemptyset( &mask );
-                        pthread_sigmask( SIG_SETMASK, &mask, NULL );
-                        // execve() resets all signal handlers to default
-                        // Execute the program
-
-                        execve( _args( C )[0], _args( C ), _env( C ));
-                        // !!! only returns if the execve failed !!!
-
-                        // Won't print to error log as descriptor was closed above, but will
-                        // print error to stderr Processor_T can be read
-                        ERROR( "Command: '%s' failed to execute -- %s", _args( C )[0], System_getLastError());
-                        _exit( errno );
-
-                default: // Parent
-                        _setupParentPipes( P );
-                        return P;
                 }
+                // Unblock any signals - execve preserves signal mask
+                sigset_t mask;
+                sigemptyset( &mask );
+                pthread_sigmask( SIG_SETMASK, &mask, NULL );
+                // execve() resets all signal handlers to default
+                // Execute the program
+
+                execve( _args( C )[0], _args( C ), _env( C ));
+                // !!! only returns if the execve failed !!!
+
+                // Won't print to error log as descriptor was closed above, but will
+                // print error to stderr Processor_T can be read
+                ERROR( "Command: '%s' failed to execute -- %s", _args( C )[0], System_getLastError());
+                _exit( errno );
+
+        default: // Parent
+                _setupParentPipes( P );
+                return P;
         }
 }
 
