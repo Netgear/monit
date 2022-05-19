@@ -547,16 +547,9 @@ Process_T Command_execute(T C) {
                 }
                 // Unblock any signals and reset signal handlers
                 sigset_t mask;
-                sigemptyset(&mask);
-                pthread_sigmask(SIG_SETMASK, &mask, NULL);
-                signal(SIGINT, SIG_DFL);
-                signal(SIGQUIT, SIG_DFL);
-                signal(SIGABRT, SIG_DFL);
-                signal(SIGTERM, SIG_DFL);
-                signal(SIGPIPE, SIG_DFL);
-                signal(SIGCHLD, SIG_DFL); 
-                signal(SIGUSR1, SIG_DFL);
-                signal(SIGHUP, SIG_IGN);  // Ensure future opens won't allocate controlling TTYs
+                sigemptyset( &mask );
+                pthread_sigmask( SIG_SETMASK, &mask, NULL );
+                // execve() resets all signal handlers to default
                 // Execute the program
                 execve(_args(C)[0], _args(C), _env(C));
                 // Won't print to error log as descriptor was closed above, but will
