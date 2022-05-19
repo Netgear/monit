@@ -488,81 +488,84 @@ List_T Command_getCommand(T C) {
 }
 
 
-/* The Execute function. Note that we use vfork() rather than fork. Vfork has
- a special semantic in that the child process runs in the parent address space
- until exec is called in the child. The child also run first and suspend the
- parent process until exec or exit is called */
+/* The Execute function.  */
 Process_T Command_execute(T C) {
         assert(C);
         assert(_env(C));
         assert(_args(C));
-        volatile int exec_error = 0;
         Process_T P = _Process_new();
-        int descriptors = System_getDescriptorsGuarded();
-        _createPipes(P);
-        if ((P->pid = vfork()) < 0) {
-                ERROR("Command: fork failed -- %s\n", System_getLastError());
-                Process_free(&P);
-                return NULL;
-        } else if (P->pid == 0) { 
-                // Child
-                if (C->working_directory) {
-                        if (! Dir_chdir(C->working_directory)) {
-                                exec_error = errno;
-                                ERROR("Command: sub-process cannot change working directory to '%s' -- %s\n", C->working_directory, System_getLastError());
-                                _exit(errno);
+        if ( P != NULL )
+        {
+                _createPipes(P);
+                P->pid = fork();
+                switch ( P->pid ) {
+                case -1: // failed
+                        ERROR( "Command: fork failed -- %s\n", System_getLastError());
+                        Process_free( &P );
+                        return NULL;
+
+                case 0: // Child
+                        setsid(); // Emancipate from parent
+                        _setupChildPipes( P );
+                        // Close all descriptors except stdio, _before_ any uid/gid switching
+                        Util_closeFds();
+
+                        if ( C->working_directory ) {
+                                if ( !Dir_chdir( C->working_directory )) {
+                                        ERROR( "Command: sub-process cannot change working directory to '%s' -- %s\n",
+                                               C->working_directory, System_getLastError());
+                                        _exit( errno );
+                                }
                         }
-                }
-                setsid(); // Loose controlling terminal
-                _setupChildPipes(P);
-                // Close all descriptors except stdio, _before_ any uid/gid switching
-                for (int i = 3; i < descriptors; i++) {
-                        close(i);
-                }
-                P->gid = getgid();
-                if (C->gid) {
-                        if (setgid(C->gid) == 0) {
-                                P->gid = C->gid;
-                        } else {
-                                ERROR("Command: Cannot change process gid to '%d' -- %s\n", C->gid, System_getLastError());
+                        P->gid = getgid();
+                        if ( C->gid ) {
+                                if ( setgid( C->gid ) == 0 ) {
+                                        P->gid = C->gid;
+                                } else {
+                                        ERROR( "Command: Cannot change process gid to '%d' -- %s\n",
+                                               C->gid, System_getLastError());
+                                }
                         }
-                }
-                P->uid = getuid();
-                if (C->uid) {
-                        struct passwd *user = getpwuid(C->uid);
-                        if (user) {
-                                Command_setEnv(C, "HOME", user->pw_dir);
-                                if (initgroups(user->pw_name, P->gid) == 0) {
-                                        if (setuid(C->uid) == 0) {
-                                                P->uid = C->uid;
+                        P->uid = getuid();
+                        if ( C->uid ) {
+                                struct passwd * user = getpwuid( C->uid );
+                                if ( user ) {
+                                        Command_setEnv( C, "HOME", user->pw_dir );
+                                        if ( initgroups( user->pw_name, P->gid ) == 0 ) {
+                                                if ( setuid( C->uid ) == 0 ) {
+                                                        P->uid = C->uid;
+                                                } else {
+                                                        ERROR( "Command: Cannot change process uid to '%d' -- %s\n",
+                                                               C->uid, System_getLastError());
+                                                }
                                         } else {
-                                                ERROR("Command: Cannot change process uid to '%d' -- %s\n", C->uid, System_getLastError());
+                                                ERROR( "Command: initgroups for user %s failed -- %s\n",
+                                                       user->pw_name, System_getLastError());
                                         }
                                 } else {
-                                        ERROR("Command: initgroups for user %s failed -- %s\n", user->pw_name, System_getLastError());
+                                        ERROR( "Command: uid %d not found on the system -- %s\n", C->uid,
+                                               System_getLastError());
                                 }
-                        } else {
-                                ERROR("Command: uid %d not found on the system -- %s\n", C->uid, System_getLastError());
                         }
+                        // Unblock any signals - execve preserves signal mask
+                        sigset_t mask;
+                        sigemptyset( &mask );
+                        pthread_sigmask( SIG_SETMASK, &mask, NULL );
+                        // execve() resets all signal handlers to default
+                        // Execute the program
+
+                        execve( _args( C )[0], _args( C ), _env( C ));
+                        // !!! only returns if the execve failed !!!
+
+                        // Won't print to error log as descriptor was closed above, but will
+                        // print error to stderr Processor_T can be read
+                        ERROR( "Command: '%s' failed to execute -- %s", _args( C )[0], System_getLastError());
+                        _exit( errno );
+
+                default: // Parent
+                        _setupParentPipes( P );
+                        return P;
                 }
-                // Unblock any signals and reset signal handlers
-                sigset_t mask;
-                sigemptyset( &mask );
-                pthread_sigmask( SIG_SETMASK, &mask, NULL );
-                // execve() resets all signal handlers to default
-                // Execute the program
-                execve(_args(C)[0], _args(C), _env(C));
-                // Won't print to error log as descriptor was closed above, but will
-                // print error to stderr Processor_T can be read
-                ERROR("Command: '%s' failed to execute -- %s", _args(C)[0], System_getLastError());
-                exec_error = errno;
-                _exit(errno);
         }
-        // Parent
-        _setupParentPipes(P);
-        if (exec_error != 0)
-                Process_free(&P);
-        errno = exec_error;
-        return P;
 }
 
