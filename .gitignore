@@ -1,3 +1,11 @@
+*.o
+*.la
+*.lo
+*.cache
+.dirstamp
+
+*Test
+
 # OS X
 .DS_Store
 
