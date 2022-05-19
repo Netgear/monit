@@ -183,6 +183,9 @@ static void _setupChildPipes(Process_T P) {
                         ERROR("Command: dup2(stderr) -- %s\n", System_getLastError());
                 close(P->stderr_pipe[1]);
         }
+        Net_setNonBlocking(P->stdin_pipe[0]);
+        Net_setNonBlocking(P->stdout_pipe[1]);
+        Net_setNonBlocking(P->stderr_pipe[1]);
 }
 
 
