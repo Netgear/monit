@@ -489,35 +489,6 @@ int OutputStream_flush(T S) {
         return 0;
 }
 
-int OutputStream_read(T S) {
-        assert(S);
-        return read_byte(S);
-}
-
-
-char *OutputStream_readLine(T S, char *s, int size) {
-        assert(S);
-        assert(s);
-        uchar_t *p = (uchar_t *)s;
-        for (int c = 0; (--size > 0) && ((c = read_byte(S)) > 0);) { // Stop if \0 is read or no more data
-                *p++ = c;
-                if (c == '\n')
-                        break;
-        }
-        *p = 0;
-        return *s ? s : NULL;
-}
-
-
-int OutputStream_readBytes(T S, void *b, int size) {
-        assert(S);
-        assert(b);
-        uchar_t *p = (uchar_t*)b;
-        for (int c = 0; (size-- > 0) && ((c = read_byte(S)) != -1);)
-                *p++ = c;
-        return  S->isclosed ? -1 : (int)(p - (uchar_t*)b);
-}
-
 void OutputStream_clear(T S) {
         assert(S);
         S->length = S->buffer;

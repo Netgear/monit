@@ -87,9 +87,9 @@ typedef enum {
 /* ----------------------------------------------------------------- Private */
 
 
-static int _getOutput(OutputStream_T in, char *buf, int buflen) {
-        OutputStream_setTimeout(in, 0);
-        return OutputStream_readBytes(in, buf, buflen - 1);
+static int _getOutput(InputStream_T in, char *buf, int buflen) {
+        InputStream_setTimeout(in, 0);
+        return InputStream_readBytes(in, buf, buflen - 1);
 }
 
 

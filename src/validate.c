@@ -1615,7 +1615,7 @@ State_Type check_program(Service_T s) {
         if (P) {
                 // Process program output
                 _programOutput(Process_getErrorStream(P), s->program->inprogressOutput);
-                _programOutput(Process_getInputStream(P), s->program->inprogressOutput);
+                _programOutput(Process_getOutputStream(P), s->program->inprogressOutput);
                 // Is the program still running?
                 if (Process_exitStatus(P) < 0) {
                         int64_t execution_time = (now - s->program->started) * 1000;

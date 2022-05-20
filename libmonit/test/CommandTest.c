@@ -29,19 +29,19 @@ static void onExec(Process_T P) {
         char buf[STRLEN];
         // Child process info
         printf("\tSubprocess ((pid=%d) created with cwd (%s)\n", Process_getPid(P), Process_getDir(P));
-        InputStream_T in = Process_getInputStream(P);
-        OutputStream_T out = Process_getOutputStream(P);
+        OutputStream_T in = Process_getInputStream(P);
+        InputStream_T out = Process_getOutputStream(P);
         InputStream_T err = Process_getErrorStream(P);
         printf("\tSub-Process is %s\n", Process_isRunning(P) ? "running" : "not running");
         printf("\tCommunication with child:\n");
-        if (! InputStream_readLine(in, buf, STRLEN)) {
+        if (! InputStream_readLine(out, buf, STRLEN)) {
                 InputStream_readLine(err, buf, STRLEN);
                 printf("\tError in script: %s\n", buf);
         } else {
                 printf("\t%s", buf);
-                OutputStream_print(out, "Elessar Telcontar\n");
-                assert(OutputStream_flush(out) > 0);
-                char *line = InputStream_readLine(in, buf, STRLEN);
+                OutputStream_print(in, "Elessar Telcontar\n");
+                assert(OutputStream_flush(in) > 0);
+                char *line = InputStream_readLine(out, buf, STRLEN);
                 assert(line);
                 printf("\t%s", line);
         }
@@ -78,8 +78,8 @@ static void onKill(Process_T P) {
 static void onEnv(Process_T P) {
         assert(P);
         char buf[STRLEN];
-        InputStream_T in = Process_getInputStream(P);
-        assert(InputStream_readLine(in, buf, STRLEN));
+        InputStream_T out = Process_getOutputStream(P);
+        assert(InputStream_readLine(out, buf, STRLEN));
         assert(Str_isEqual(Str_chomp(buf), "Ylajali"));
         // Assert that sub-process environment is not set in main process
         assert(! getenv("SULT"));
