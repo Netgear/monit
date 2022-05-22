@@ -52,6 +52,10 @@
 #include <unistd.h>
 #endif
 
+#ifdef HAVE_POLL_H
+#include <poll.h>
+#endif
+
 #include "monit.h"
 #include "ProcessTree.h"
 #include "net.h"
@@ -92,7 +96,22 @@ static int _getOutput(InputStream_T in, char *buf, int buflen) {
         return InputStream_readBytes(in, buf, buflen - 1);
 }
 
+int64_t _millisecondsSince( struct timespec * start )
+{
+        struct timespec now;
+        clock_gettime( CLOCK_MONOTONIC, &now );
+        return (now.tv_sec - start->tv_sec) * 1000 + ((now.tv_nsec - start->tv_nsec) / 1000000);
+}
 
+/**
+ * @brief
+ * @param S service to execute
+ * @param c
+ * @param msg message to return to caller
+ * @param msglen size of the msg buffer
+ * @param timeout in microseconds
+ * @return
+ */
 static int _commandExecute(Service_T S, command_t c, char *msg, int msglen, int64_t *timeout) {
         ASSERT(S);
         ASSERT(c);
@@ -139,25 +158,48 @@ static int _commandExecute(Service_T S, command_t c, char *msg, int msglen, int6
                 Process_T P = Command_execute(C);
                 Command_free(&C);
                 if (P) {
+                        struct pollfd redirStdio[2];
+                        redirStdio[0].fd = InputStream_getDescriptor(Process_getOutputStream(P));
+                        redirStdio[0].events = POLLIN;
+                        redirStdio[1].fd = InputStream_getDescriptor(Process_getErrorStream(P));;
+                        redirStdio[1].events = POLLIN;
+
+                        struct timespec start;
+                        clock_gettime( CLOCK_MONOTONIC, &start );
+
+                        boolean_t timedOut;
+                        /* collect stdout and stderr while we wait, to prevent the subprocess
+                         * from filling the pipe and blocking/getting errors on write */
                         do {
-                                Time_usleep(RETRY_INTERVAL);
-                                *timeout -= RETRY_INTERVAL;
-                        } while ((status = Process_exitStatus(P)) < 0 && *timeout > 0 && ! (Run.flags & Run_Stopped));
-                        if (*timeout <= 0)
-                                snprintf(msg, msglen, "Program '%s' timed out after %s", Util_commandDescription(c, (char[STRLEN]){}), Fmt_time2str(_timeoutMilli, (char[11]){}));
-                        int n, total = 0;
-                        char buf[STRLEN];
-                        do {
-                                n = _getOutput(Process_getErrorStream(P), buf, sizeof(buf));
-                                if (n > 0) {
-                                        buf[n] = 0;
-                                        DEBUG("%s", buf);
-                                        // Report the first message (override existing plain timeout message if some program output is available)
-                                        if (! total)
-                                                snprintf(msg, msglen, "'%s': %s%s", Util_commandDescription(c, (char[STRLEN]){}), *timeout <= 0 ? "Program timed out -- " : "", buf);
-                                        total += n;
+                                int n;
+                                char buf[STRLEN];
+                                int nfd = poll( redirStdio, 2, RETRY_INTERVAL/1000 );
+                                if (nfd > 0)
+                                {
+                                        if ( redirStdio[0].revents & POLLIN )
+                                        {
+                                                n = _getOutput(Process_getOutputStream(P), buf, sizeof(buf));
+                                                if (n > 0) {
+                                                        buf[n] = 0;
+                                                        // Report anything sent to stdout by subprogram
+                                                        DEBUG("%s", buf);
+                                                }
+                                        }
+                                        if ( redirStdio[1].revents & POLLIN )
+                                        {
+                                                n = _getOutput(Process_getErrorStream(P), buf, sizeof(buf));
+                                                if (n > 0) {
+                                                        buf[n] = 0;
+                                                        // Report anything sent to stderr by subprogram
+                                                        DEBUG("%s", buf);
+                                                }
+                                        }
                                 }
-                        } while (n > 0 && Run.debug && total < 2048); // Limit the debug output (if the program will have endless output, such as 'yes' utility, we have to stop at some point to not spin here forever)
+                                timedOut = _millisecondsSince( &start ) > _timeoutMilli;
+                        } while ((status = Process_exitStatus(P)) < 0 && ! timedOut && ! (Run.flags & Run_Stopped));
+                        if (timedOut)
+                                snprintf(msg, msglen, "Program '%s' timed out after %s",
+                                         Util_commandDescription(c, (char[STRLEN]){}), Fmt_time2str(_timeoutMilli, (char[11]){}));
                         Process_free(&P); // Will kill the program if still running
                 }
         }
