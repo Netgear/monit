@@ -176,6 +176,7 @@ retry:
                 if (Util_evalDoubleQExpression(p->responsetime.operator, p->responsetime.current, p->responsetime.limit)) {
                         rv = State_Failed;
                         Event_post(s, Event_Speed, State_Failed, p->action, "response time %s doesn't match limit [time %s %s]", Convert_time2str(p->responsetime.current, (char[11]){}), operatorshortnames[p->responsetime.operator], Convert_time2str(p->responsetime.limit, (char[11]){}));
+                        //ntgr test
                 } else {
                         Event_post(s, Event_Speed, State_Failed, p->action, "response time %s matches limit [time %s %s]", Convert_time2str(p->responsetime.current, (char[11]){}), operatorshortnames[p->responsetime.operator], Convert_time2str(p->responsetime.limit, (char[11]){}));
                 }
